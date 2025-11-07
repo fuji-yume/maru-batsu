@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>マルバツクイズ</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#06b6d4;--ok:#16a34a;--ng:#ef4444;--muted:#94a3b8;color-scheme:dark}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;min-height:100vh;margin:0;background:linear-gradient(180deg,#071028 0%,#071a2a 100%);display:flex;align-items:center;justify-content:center;padding:24px;color:#e6eef6}
+    .card{width:100%;max-width:760px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-radius:12px;padding:20px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    h1{font-size:18px;margin:0}
+    .meta{color:var(--muted);font-size:13px}
+    .question-area{padding:18px;border-radius:10px;background:rgba(0,0,0,0.15);margin-bottom:12px}
+    .qnum{font-size:13px;color:var(--muted)}
+    .qtext{font-size:20px;margin:10px 0}
+    .controls{display:flex;gap:10px}
+    button.btn{flex:1;padding:12px;border-radius:8px;border:0;font-weight:600;cursor:pointer}
+    button.btn:active{transform:translateY(1px)}
+    .btn-maru{background:linear-gradient(90deg,var(--accent),#0891b2);color:#022;}
+    .btn-batsu{background:linear-gradient(90deg,#ef4444,#dc2626);color:#fff}
+    .btn-secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);padding:8px 10px;border-radius:8px}
+    .feedback{height:36px;margin-top:10px;display:flex;align-items:center;gap:10px}
+    .dot{width:10px;height:10px;border-radius:50%}
+    .progress{height:10px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;margin-top:12px}
+    .progress > i{height:100%;background:linear-gradient(90deg,var(--accent),#7dd3fc);display:block;width:0%}
+    .score{display:flex;gap:8px;align-items:center}
+    .result{padding:12px;border-radius:8px;background:rgba(255,255,255,0.02);margin-top:12px}
+    .small{font-size:13px;color:var(--muted)}
+    footer{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    @media(max-width:480px){.qtext{font-size:18px}.controls{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <header>
+      <div>
+        <h1>マルバツクイズ</h1>
+        <div class="meta">スペース:次へ / M:丸 / X:バツ</div>
+      </div>
+      <div class="score"><strong id="scoreText">0 / 0</strong><div class="small" id="percent">0%</div></div>
+    </header>
+
+    <section class="question-area" id="quiz">
+      <div class="qnum" id="qNum">問題 1</div>
+      <div class="qtext" id="qText">読み込み中...</div>
+      <div class="controls">
+        <button class="btn btn-maru" id="btnMaru">◯</button>
+        <button class="btn btn-batsu" id="btnBatsu">✕</button>
+      </div>
+      <div class="feedback" id="feedback"></div>
+      <div class="progress" aria-hidden>
+        <i id="progressBar"></i>
+      </div>
+    </section>
+
+    <div class="result" id="result" hidden>
+      <div id="resultText"></div>
+    </div>
+
+    <footer>
+      <button class="btn-secondary" id="prevBtn">前へ</button>
+      <button class="btn-secondary" id="nextBtn">次へ</button>
+      <button class="btn-secondary" id="restartBtn">最初から</button>
+    </footer>
+  </main>
+
+  <script>
+    // 問題データ。ここを編集して自分の問題を入れる
+    const QUESTIONS = [
+      {q: '地球は太陽の周りを公転している。', a: true, explain: '地球は太陽の周りを約365日で一周します。'},
+      {q: '日本の首都は大阪である。', a: false, explain: '日本の首都は東京です。'},
+      {q: '水は氷点下でも液体で存在できる。', a: true, explain: '過冷却という現象で液体のままでいることがあります。'},
+      {q: 'HTMLはプログラミング言語である。', a: false, explain: 'HTMLはマークアップ言語です。'}
+    ];
+
+    // 状態
+    let index = 0;
+    let score = 0;
+    let answered = Array(QUESTIONS.length).fill(false);
+    let userAnswers = Array(QUESTIONS.length).fill(null);
+
+    const qNumEl = document.getElementById('qNum');
+    const qTextEl = document.getElementById('qText');
+    const btnMaru = document.getElementById('btnMaru');
+    const btnBatsu = document.getElementById('btnBatsu');
+    const feedbackEl = document.getElementById('feedback');
+    const progressBar = document.getElementById('progressBar');
+    const scoreText = document.getElementById('scoreText');
+    const percentText = document.getElementById('percent');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const result = document.getElementById('result');
+    const resultText = document.getElementById('resultText');
+
+    function render() {
+      const total = QUESTIONS.length;
+      qNumEl.textContent = `問題 ${index+1} / ${total}`;
+      qTextEl.textContent = QUESTIONS[index].q;
+      // プログレス
+      const pct = Math.round(((index) / total) * 100);
+      progressBar.style.width = `${((index+1)/total)*100}%`;
+      // スコア表示
+      scoreText.textContent = `${score} / ${total}`;
+      percentText.textContent = total? Math.round((score/total)*100) + '%' : '0%';
+      // フィードバック
+      renderFeedback();
+      // 結果表示制御
+      if (answered.every(Boolean)) showFinalResult(); else hideFinalResult();
+    }
+
+    function renderFeedback() {
+      feedbackEl.innerHTML = '';
+      const ua = userAnswers[index];
+      if (ua === null) return;
+      const correct = (ua === QUESTIONS[index].a);
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = correct ? 'var(--ok)' : 'var(--ng)';
+      const msg = document.createElement('div');
+      msg.textContent = correct ? '正解' : '不正解';
+      const explain = document.createElement('div');
+      explain.className = 'small';
+      explain.textContent = QUESTIONS[index].explain || '';
+      feedbackEl.appendChild(dot);
+      feedbackEl.appendChild(msg);
+      feedbackEl.appendChild(explain);
+    }
+
+    function answer(isMaru) {
+      if (answered[index]) return; // 既に回答済みなら無視
+      const isCorrect = (isMaru === QUESTIONS[index].a);
+      userAnswers[index] = isMaru;
+      answered[index] = true;
+      if (isCorrect) score += 1;
+      render();
+    }
+
+    btnMaru.addEventListener('click', () => answer(true));
+    btnBatsu.addEventListener('click', () => answer(false));
+
+    prevBtn.addEventListener('click', () => {
+      if (index === 0) return;
+      index -= 1; render();
+    });
+    nextBtn.addEventListener('click', () => {
+      if (index < QUESTIONS.length - 1) index += 1;
+      render();
+    });
+    restartBtn.addEventListener('click', () => {
+      index = 0; score = 0; answered = Array(QUESTIONS.length).fill(false); userAnswers = Array(QUESTIONS.length).fill(null);
+      result.hidden = true; render();
+    });
+
+    // キーボード操作: MまたはZで丸、XまたはNでバツ、Spaceで次へ
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'm' || e.key === 'M' || e.key === 'z' || e.key === 'Z') answer(true);
+      if (e.key === 'x' || e.key === 'X' || e.key === 'n' || e.key === 'N') answer(false);
+      if (e.key === ' '){ e.preventDefault(); if (index < QUESTIONS.length -1) index +=1; render(); }
+      if (e.key === 'ArrowRight') { if (index < QUESTIONS.length -1) index +=1; render(); }
+      if (e.key === 'ArrowLeft') { if (index > 0) index -=1; render(); }
+    });
+
+    function showFinalResult(){
+      result.hidden = false;
+      const total = QUESTIONS.length;
+      const pct = Math.round((score/total)*100);
+      resultText.innerHTML = `<strong>終了</strong><div class="small">正答 ${score} / ${total} (${pct}%)</div>`;
+    }
+    function hideFinalResult(){ result.hidden = true; }
+
+    // 初期表示
+    render();
+  </script>
+</body>
+</html>
